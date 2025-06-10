@@ -368,9 +368,9 @@ impl Machine for MachineRiscv {
         dest: Location,
     ) -> Result<(), CompileError> {
         match (size, dest, source) {
-            (Size::S64, Location::GPR(GPR::X27), Location::GPR(GPR::X10)) => {
-                 self.assembler.emit_mov(size, source, dest)
-            },
+            (Size::S64, Location::GPR(_), Location::GPR(_)) => {
+                self.assembler.emit_mov(size, source, dest)
+            }
             _ => todo!(),
         }
     }

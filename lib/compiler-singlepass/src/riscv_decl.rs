@@ -50,6 +50,7 @@ pub enum GPR {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[allow(clippy::upper_case_acronyms)]
 pub enum FPR {
+    F0 = 32,
     // TODO: define floating-point registers F0-F31.
 }
 

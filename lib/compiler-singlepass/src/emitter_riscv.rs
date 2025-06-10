@@ -1,30 +1,30 @@
 //! RISC-V emitter scaffolding.
 
 use crate::{
-    codegen_error, common_decl::Size, location::Location as AbstractLocation,
+    codegen_error,
+    common_decl::Size,
+    location::{Location as AbstractLocation, Reg},
     machine_riscv::AssemblerRiscv,
 };
 pub use crate::{
     location::Multiplier,
     machine::{Label, Offset},
-    riscv_decl::{FPR, GPR},
+    riscv_decl::{ArgumentRegisterAllocator, RiscvRegister, FPR, GPR},
 };
 use dynasm::dynasm;
+use dynasmrt::{
+    riscv::RiscvRelocation, AssemblyOffset, DynamicLabel, DynasmApi, DynasmLabelApi, VecAssembler,
+};
 use wasmer_compiler::types::{
     function::FunctionBody,
     section::{CustomSection, CustomSectionProtection, SectionBody},
 };
 use wasmer_types::{
-    target::CpuFeature, target::CallingConvention,
-    CompileError, FunctionIndex, FunctionType, Type, VMOffsets,
-};
-use dynasmrt::{
-    riscv::RiscvRelocation, AssemblyOffset, DynamicLabel, DynasmApi, DynasmLabelApi,
-    VecAssembler,
+    target::CallingConvention, target::CpuFeature, CompileError, FunctionIndex, FunctionType, Type,
+    VMOffsets,
 };
 
 type Assembler = VecAssembler<RiscvRelocation>;
-
 
 /// Force `dynasm!` to use the correct arch (riscv64) when cross-compiling.
 macro_rules! dynasm {
@@ -93,9 +93,11 @@ impl EmitterRiscv for Assembler {
 
     fn emit_mov(&mut self, sz: Size, src: Location, dst: Location) -> Result<(), CompileError> {
         match (sz, src, dst) {
-            (Size::S64, Location::GPR(GPR::X10), Location::GPR(GPR::X27)) => {
-                dynasm!(self ; add s11, a0, x0);
-            },
+            (Size::S64, Location::GPR(src), Location::GPR(dst)) => {
+                let src = src.into_index() as u32;
+                let dst = dst.into_index() as u32;
+                dynasm!(self ; add X(dst), X(src), x0);
+            }
             _ => todo!(),
         }
         Ok(())
