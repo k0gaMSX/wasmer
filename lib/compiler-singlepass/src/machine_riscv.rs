@@ -253,13 +253,15 @@ impl Machine for MachineRiscv {
         self.instructions_address_map.clone()
     }
     fn local_on_stack(&mut self, stack_offset: i32) -> Location {
-        Location::Memory(GPR::X29, -stack_offset) // TODO
+        Location::Memory(GPR::X2, -stack_offset)
     }
     fn adjust_stack(&mut self, delta_stack_offset: u32) -> Result<(), CompileError> {
-        Ok(()) // TODO
+        let off = -(delta_stack_offset as i32);
+        self.assembler.emit_adjust_stack(off);
+        Ok(())
     }
     fn restore_stack(&mut self, delta_stack_offset: u32) -> Result<(), CompileError> {
-        Ok(()) // TODO
+        todo!();
     }
     fn pop_stack_locals(&mut self, delta_stack_offset: u32) -> Result<(), CompileError> {
         todo!()
@@ -283,19 +285,20 @@ impl Machine for MachineRiscv {
     }
     fn get_local_location(&self, idx: usize, callee_saved_regs_size: usize) -> Location {
         match idx {
-            0 => Location::GPR(GPR::X8),
-            1 => Location::GPR(GPR::X9),
-            2 => Location::GPR(GPR::X18),
-            3 => Location::GPR(GPR::X19),
-            4 => Location::GPR(GPR::X20),
-            5 => Location::GPR(GPR::X21),
-            6 => Location::GPR(GPR::X22),
-            7 => Location::GPR(GPR::X23),
-            _ => todo!(),                  // in fact, we only care about idx=0
+            0 => Location::GPR(GPR::X10),
+            1 => Location::GPR(GPR::X11),
+            2 => Location::GPR(GPR::X12),
+            3 => Location::GPR(GPR::X13),
+            4 => Location::GPR(GPR::X14),
+            5 => Location::GPR(GPR::X15),
+            6 => Location::GPR(GPR::X16),
+            7 => Location::GPR(GPR::X17),
+            _ => todo!(), // in fact, we only care about idx=0
         }
     }
     fn move_local(&mut self, stack_offset: i32, location: Location) -> Result<(), CompileError> {
-        Ok(()) // TODO
+        let loc = self.local_on_stack(stack_offset);
+        self.assembler.emit_store(Size::S64, location, loc)
     }
     fn list_to_save(&self, calling_convention: CallingConvention) -> Vec<Location> {
         vec![]
@@ -318,8 +321,8 @@ impl Machine for MachineRiscv {
                 6 => Location::GPR(GPR::X16),
                 7 => Location::GPR(GPR::X17),
                 _ => todo!(), // in fact, we only care about idx=0,1
-             }
-         }
+            },
+        }
     }
     fn get_call_param_location(
         &self,
@@ -339,7 +342,7 @@ impl Machine for MachineRiscv {
                 6 => Location::GPR(GPR::X16),
                 7 => Location::GPR(GPR::X17),
                 _ => todo!(), // in fact, we only care about idx=0,1
-            }
+            },
         }
     }
     fn get_simple_param_location(
@@ -358,7 +361,7 @@ impl Machine for MachineRiscv {
                 6 => Location::GPR(GPR::X16),
                 7 => Location::GPR(GPR::X17),
                 _ => todo!(), // in fact, we only care about idx=0,1
-            }
+            },
         }
     }
     fn move_location(
@@ -400,9 +403,14 @@ impl Machine for MachineRiscv {
         todo!()
     }
     fn restore_saved_area(&mut self, saved_area_offset: i32) -> Result<(), CompileError> {
-        Ok(()) // TODO
+        self.assembler.emit_adjust_stack(saved_area_offset);
+        Ok(())
     }
     fn pop_location(&mut self, location: Location) -> Result<(), CompileError> {
+        match location {
+            Location::GPR(_) => self.assembler.emit_pop(location),
+            _ => todo!()
+        };
         Ok(()) // TODO
     }
     fn new_machine_state(&self) -> MachineState {
@@ -420,10 +428,10 @@ impl Machine for MachineRiscv {
         self.assembler.finalize_function()
     }
     fn emit_function_prolog(&mut self) -> Result<(), CompileError> {
-        Ok(()) // TODO
+        self.assembler.emit_prolog()
     }
     fn emit_function_epilog(&mut self) -> Result<(), CompileError> {
-        Ok(()) // TODO
+        self.assembler.emit_epilog()
     }
     fn emit_function_return_value(
         &mut self,
@@ -431,8 +439,16 @@ impl Machine for MachineRiscv {
         cannonicalize: bool,
         loc: Location,
     ) -> Result<(), CompileError> {
-        Ok(()) // TODO
+        let reg1 = Location::GPR(self.get_gpr_for_ret());
+        match (ty, loc) {
+            (WpType::I32, Location::Memory(_, _)) => {
+                self.assembler.emit_mov(Size::S32, loc, reg1);
+            }
+            _ => todo!(),
+        }
+        Ok(())
     }
+
     fn emit_function_return_float(&mut self) -> Result<(), CompileError> {
         todo!()
     }
@@ -479,7 +495,7 @@ impl Machine for MachineRiscv {
         todo!()
     }
     fn get_gpr_for_ret(&self) -> Self::GPR {
-        todo!()
+        GPR::X26
     }
     fn get_simd_for_ret(&self) -> Self::SIMD {
         todo!()
@@ -594,6 +610,9 @@ impl Machine for MachineRiscv {
         todo!()
     }
     fn emit_ret(&mut self) -> Result<(), CompileError> {
+        let reg1 = Location::GPR(self.get_gpr_for_ret());
+        let reg2 = Location::GPR(GPR::X10);
+        self.assembler.emit_mov(Size::S64, reg1, reg2);
         self.assembler.emit_ret();
         Ok(())
     }
@@ -654,7 +673,7 @@ impl Machine for MachineRiscv {
         loc_b: Location,
         ret: Location,
     ) -> Result<(), CompileError> {
-        self.assembler.emit_add(loc_a, loc_b, ret)
+        self.assembler.emit_add(Size::S32, loc_a, loc_b, ret)
     }
     fn emit_binop_sub32(
         &mut self,
@@ -2604,7 +2623,7 @@ impl Machine for MachineRiscv {
         todo!()
     }
     fn gen_dwarf_unwind_info(&mut self, code_len: usize) -> Option<UnwindInstructions> {
-	None // TODO
+        None // TODO
     }
     fn gen_windows_unwind_info(&mut self, code_len: usize) -> Option<Vec<u8>> {
         todo!()

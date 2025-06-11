@@ -63,12 +63,19 @@ pub trait EmitterRiscv {
     fn emit_ret(&mut self) -> Result<(), CompileError>;
     fn emit_add(
         &mut self,
+        sz: Size,
         src1: Location,
         src2: Location,
         dst: Location,
     ) -> Result<(), CompileError>;
 
     fn emit_label(&mut self, label: Label) -> Result<(), CompileError>;
+    fn emit_store(&mut self, sz: Size, src: Location, dst: Location) -> Result<(), CompileError>;
+
+    fn emit_adjust_stack(&mut self, delta_stack_offset: i32) -> Result<(), CompileError>;
+    fn emit_prolog(&mut self) -> Result<(), CompileError>;
+    fn emit_epilog(&mut self) -> Result<(), CompileError>;
+    fn emit_pop(&mut self, reg: Location) -> Result<(), CompileError>;
 }
 
 impl EmitterRiscv for Assembler {
@@ -95,6 +102,14 @@ impl EmitterRiscv for Assembler {
                 let dst = dst.into_index() as u32;
                 dynasm!(self ; add X(dst), X(src), x0);
             }
+            (Size::S32, Location::Memory(reg1, disp), Location::GPR(dst)) => {
+                let reg1 = reg1.into_index() as u32;
+                let dst = dst.into_index() as u32;
+                let disp = disp as i32;
+                dynasm!(self
+                    ; lw X(dst), [X(reg1), -disp]
+                )
+            }
             _ => todo!(),
         }
         Ok(())
@@ -112,6 +127,7 @@ impl EmitterRiscv for Assembler {
 
     fn emit_add(
         &mut self,
+        sz: Size,
         src1: Location,
         src2: Location,
         dst: Location,
@@ -119,9 +135,37 @@ impl EmitterRiscv for Assembler {
         // We do know that we are going to be called only once, and we know that
         // the parameters are already in a1 and a2, so we can just emit a hardcoded
         // addw a0, a1, a2 and it should work for our specific case
-        dynasm!(self
-            ; addw a0, a1, a2
-        );
+        match (sz, src1, src2, dst) {
+            (Size::S32, Location::GPR(src1), Location::GPR(src2), Location::GPR(dst)) => {
+                let src1 = src1.into_index() as u32;
+                let src2 = src2.into_index() as u32;
+                let dst = dst.into_index() as u32;
+                dynasm!(self
+                    ; addw X(dst), X(src1), X(src2)
+                );
+            }
+            (
+                Size::S32,
+                Location::Memory(reg1, disp1),
+                Location::Memory(reg2, disp2),
+                Location::Memory(reg3, disp3),
+            ) => {
+                let reg1 = reg1.into_index() as u32;
+                let reg2 = reg2.into_index() as u32;
+                let reg3 = reg3.into_index() as u32;
+
+                let disp1 = disp1 as i32;
+                let disp2 = disp2 as i32;
+                let disp3 = disp3 as i32;
+                dynasm!(self
+                    ; lw t1, [X(reg1), -disp1]
+                    ; lw t2, [X(reg2), -disp2]
+                    ; addw t1, t1, t2
+                    ; sw t1, [X(reg3), -disp3]
+                );
+            }
+            _ => todo!(),
+        }
         Ok(())
     }
 
@@ -129,6 +173,59 @@ impl EmitterRiscv for Assembler {
         dynasm!(self
             ; ret
         );
+        Ok(())
+    }
+
+    fn emit_store(&mut self, sz: Size, reg: Location, addr: Location) -> Result<(), CompileError> {
+        match (sz, reg, addr) {
+            (Size::S64, Location::GPR(reg), Location::Memory(addr, disp)) => {
+                let reg = reg.into_index() as u32;
+                let addr = addr.into_index() as u32;
+                let disp = disp as i32;
+                dynasm!(self ; sd X(reg), [X(addr), -disp]);
+            }
+            _ => todo!(),
+        }
+        Ok(())
+    }
+
+    fn emit_adjust_stack(&mut self, off: i32) -> Result<(), CompileError> {
+        dynasm!(self
+           ; addi sp, sp, off
+        );
+        Ok(())
+    }
+
+    fn emit_prolog(&mut self) -> Result<(), CompileError> {
+        dynasm!(self
+            ; sd fp, [sp, -16]
+            ; sd ra, [sp, -8]
+            ; addi fp, sp, -16
+            ; addi sp, sp, -16
+        );
+        Ok(())
+    }
+
+    fn emit_epilog(&mut self) -> Result<(), CompileError> {
+        dynasm!(self
+            ; addi sp, fp, 16
+            ; ld ra, [fp, 8]
+            ; ld fp, [fp, 0]
+        );
+        Ok(())
+    }
+
+    fn emit_pop(&mut self, reg: Location) -> Result<(), CompileError> {
+        match reg {
+            Location::GPR(reg) => {
+               let reg = reg.into_index() as u32;
+               dynasm!(self
+                   ; addi sp, sp, 8
+                   ; ld X(reg), [sp, 8]
+               )
+            }
+            _ => todo!()
+        }
         Ok(())
     }
 }
@@ -147,12 +244,13 @@ pub fn gen_std_trampoline_riscv64(
     );
 
     dynasm!(a
-       ; add t0, a1, x0
-       ; add t1, a2, x0
-       ; lw a1, [a2, 0]
-       ; lw a2, [a2, 16]
-       ; jalr t0
-       ; sw a0, [t1, 0]
+       ; add t1, a1, x0
+       ; add t0, a2, x0
+       ; add x27, a0, x0
+       ; lw a0, [a2, 0]
+       ; lw a1, [a2, 16]
+       ; jalr t1
+       ; sw a0, [t0, 0]
     );
 
     dynasm!(a
