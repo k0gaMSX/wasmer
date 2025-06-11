@@ -1,15 +1,12 @@
 //! RISC-V emitter scaffolding.
 
 use crate::{
-    codegen_error,
     common_decl::Size,
     location::{Location as AbstractLocation, Reg},
-    machine_riscv::AssemblerRiscv,
 };
 pub use crate::{
-    location::Multiplier,
     machine::{Label, Offset},
-    riscv_decl::{ArgumentRegisterAllocator, RiscvRegister, FPR, GPR},
+    riscv_decl::{FPR, GPR},
 };
 use dynasm::dynasm;
 use dynasmrt::{
