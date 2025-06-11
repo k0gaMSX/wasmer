@@ -694,16 +694,17 @@ impl<'a, M: Machine> FuncGen<'a, M> {
             self.machine.pop_location(*loc)?;
         }
 
-        // Restore register used by vmctx.
-        self.machine
-            .pop_location(Location::GPR(self.machine.get_vmctx_reg()))?;
-
         // Restore callee-saved registers.
-        for loc in self.locals.iter().rev() {
+        for loc in self.locals.iter() {
             if let Location::GPR(_) = *loc {
                 self.machine.pop_location(*loc)?;
             }
         }
+
+        // Restore register used by vmctx.
+        self.machine
+            .pop_location(Location::GPR(self.machine.get_vmctx_reg()))?;
+
         Ok(())
     }
 
